@@ -20,8 +20,8 @@ class Segmentation(object):
                  show_every=500,
                  downsampling_factor=0.1, downsampling_number=0):
         self.image = image
-        if bg_hint is None or fg_hint is None: 
-            raise Exception("Hints must be provided")
+        # if bg_hint is None or fg_hint is None: 
+        #     raise Exception("Hints must be provided")
         self.image_name = image_name
         self.plot_during_training = plot_during_training
         self.downsampling_factor = downsampling_factor
@@ -233,6 +233,20 @@ class Segmentation(object):
     def _initialize_step2(self, iteration):
         self._initialize_any_step(iteration)
 
+    def _crop_to_original_size(self, image):
+        # check if image is tensor or numpy
+        isTensor = isinstance(image, torch.Tensor)
+        if not isTensor:
+            image = torch.tensor(image)
+            image = image.unsqueeze(0)
+        # print(image.shape, (self.images[0].shape[1], self.images[0].shape[2]))
+        cropped = torch.nn.functional.interpolate(image, size=(self.images[0].shape[1], self.images[0].shape[2]))
+        if not isTensor:
+            cropped = cropped.numpy()
+            cropped = cropped.squeeze(0)
+        # cropped = image[:, :self.images[0].shape[0], :self.images[0].shape[1], :self.images[0].shape[2]]
+        return cropped
+
     def _initialize_any_step(self, iteration):
         if iteration == self.second_step_iter_num - 1:
             reg_noise_std = 0
@@ -253,9 +267,9 @@ class Segmentation(object):
             mask_net_inputs.append(
                 mask_net_original_input + (mask_net_original_input.clone().normal_() * reg_noise_std))
         # applies the nets
-        self.left_net_outputs = [self.left_net(left_net_input) for left_net_input in left_net_inputs]
-        self.right_net_outputs = [self.right_net(right_net_input) for right_net_input in right_net_inputs]
-        self.mask_net_outputs = [self.mask_net(mask_net_input) for mask_net_input in mask_net_inputs]
+        self.left_net_outputs = [self._crop_to_original_size(self.left_net(left_net_input)) for left_net_input in left_net_inputs]
+        self.right_net_outputs = [self._crop_to_original_size(self.right_net(right_net_input)) for right_net_input in right_net_inputs]
+        self.mask_net_outputs = [self._crop_to_original_size(self.mask_net(mask_net_input)) for mask_net_input in mask_net_inputs]
         self.total_loss = 0
         self.gngc = 0
         self.blur = 0
@@ -348,7 +362,9 @@ class Segmentation(object):
         original_image = self.images[0]
         mask_out_np = torch_to_np(self.mask_net_outputs[0])
         # self.current_psnr = compare_psnr(original_image, mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np)
-        self.current_psnr = peak_signal_noise_ratio(original_image, mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np)
+        im2 = mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np
+        im2 = self._crop_to_original_size(im2)
+        self.current_psnr = peak_signal_noise_ratio(original_image, im2)
         # TODO: run only in the second step
         if self.current_psnr > 30:
             self.second_step_done = True
