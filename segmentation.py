@@ -5,7 +5,8 @@ from net.losses import StdLoss, YIQGNGCLoss, GradientLoss, ExtendedL1Loss, GrayL
 from net.noise import get_noise, NoiseNet
 from utils.image_io import *
 from net.downsampler import *
-from skimage.measure import compare_psnr
+# from skimage.measure import compare_psnr
+from skimage.metrics import peak_signal_noise_ratio
 from cv2.ximgproc import guidedFilter
 
 SegmentationResult = namedtuple("SegmentationResult", ['mask', 'learned_mask', 'left', 'right', 'psnr'])
@@ -346,7 +347,8 @@ class Segmentation(object):
         right_out_np = torch_to_np(self.right_net_outputs[0])
         original_image = self.images[0]
         mask_out_np = torch_to_np(self.mask_net_outputs[0])
-        self.current_psnr = compare_psnr(original_image, mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np)
+        # self.current_psnr = compare_psnr(original_image, mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np)
+        self.current_psnr = peak_signal_noise_ratio(original_image, mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np)
         # TODO: run only in the second step
         if self.current_psnr > 30:
             self.second_step_done = True
